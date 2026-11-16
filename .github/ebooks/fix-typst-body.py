@@ -34,6 +34,34 @@ def main() -> None:
 
     text = re.sub(r"(?m)^([ \t]*)/(.*)$", esc_slash, text)
 
+    # Typst requires document labels to be unique. Keep the first heading
+    # label so links continue to resolve, and remove later duplicates.
+    seen_labels: set[str] = set()
+
+    def dedupe_heading_label(m: re.Match[str]) -> str:
+        heading, label = m.group(1), m.group(2)
+        if label in seen_labels:
+            return heading
+        seen_labels.add(label)
+        return m.group(0)
+
+    text = re.sub(
+        r"(?m)^(=+ .+?) <([A-Za-z0-9_-]+)>\s*$",
+        dedupe_heading_label,
+        text,
+    )
+
+    # Avoid hard failures for links whose target heading is absent.
+    def remove_unresolved_link(m: re.Match[str]) -> str:
+        label, body = m.group(1), m.group(2)
+        return m.group(0) if label in seen_labels else body
+
+    text = re.sub(
+        r"#link\(<([A-Za-z0-9_-]+)>\)\[([^\]]*)\]",
+        remove_unresolved_link,
+        text,
+    )
+
     # extract-media paths → root-absolute
     text = text.replace('image("build-ebooks/media/', f'image("{args.media_prefix}')
     text = text.replace('image("media/', f'image("{args.media_prefix}')
